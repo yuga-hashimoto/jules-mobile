@@ -1,23 +1,65 @@
-import React, { useCallback, useState } from 'react';
-import { View, FlatList, StyleSheet, RefreshControl } from 'react-native';
-import { List, FAB, useTheme, Text, ActivityIndicator } from 'react-native-paper';
-import { useTranslation } from 'react-i18next';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { FlatList, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Menu, Searchbar, Snackbar, Text, TouchableRipple, useTheme } from 'react-native-paper';
+import Colors from '../../constants/Colors';
 import { JulesApi } from '../../services/jules';
+
+function StatusDot({ state }: { state?: string }) {
+  const colorMap: Record<string, string> = {
+    WORKING: Colors.jules.statusWorking,
+    RUNNING: Colors.jules.statusWorking,
+    WAITING_FOR_USER: Colors.jules.statusWaiting,
+    NEEDS_CLARIFICATION: Colors.jules.statusWaiting,
+    DONE: Colors.jules.statusDone,
+    SUCCEEDED: Colors.jules.statusDone,
+    COMPLETED: Colors.jules.statusDone,
+    FAILED: Colors.jules.statusFailed,
+    CANCELLED: Colors.jules.statusCancelled,
+  };
+  const color = (state && colorMap[state]) || Colors.jules.textSecondary;
+  return (
+    <View
+      style={{
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: color,
+        marginRight: 10,
+        marginTop: 5,
+        flexShrink: 0,
+      }}
+    />
+  );
+}
 
 export default function SessionsScreen() {
   const [sessions, setSessions] = useState<any[]>([]);
+  const [filteredSessions, setFilteredSessions] = useState<any[]>([]);
+  const [sources, setSources] = useState<any[]>([]);
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const theme = useTheme();
   const { t } = useTranslation();
 
-  const loadSessions = async () => {
+  const loadData = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const data = await JulesApi.listSessions();
-      setSessions(data.sessions || []);
+      const [sessionsData, sourcesData] = await Promise.all([
+        JulesApi.listSessions(),
+        JulesApi.listSources()
+      ]);
+      setSessions(sessionsData.sessions || []);
+      setSources(sourcesData.sources || []);
     } catch (e) {
       console.error(e);
+      setError(t('errorLoading'));
     } finally {
       setLoading(false);
     }
@@ -25,43 +67,195 @@ export default function SessionsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadSessions();
+      loadData();
     }, [])
   );
 
+  useEffect(() => {
+    let filtered = sessions;
+    if (selectedSource) {
+      filtered = filtered.filter(s => s.sourceContext?.source === selectedSource);
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(s =>
+        (s.title || s.name || '').toLowerCase().includes(q) ||
+        (s.prompt || '').toLowerCase().includes(q)
+      );
+    }
+    setFilteredSessions(filtered);
+  }, [sessions, selectedSource, searchQuery]);
+
+  const getSourceLabel = (sourceName: string) => {
+    const source = sources.find(s => s.name === sourceName);
+    return source ? `${source.githubRepo.owner}/${source.githubRepo.repo}` : sourceName;
+  };
+
   const renderItem = ({ item }: { item: any }) => (
-    <List.Item
-      title={item.title || item.name}
-      description={item.prompt}
-      left={props => <List.Icon {...props} icon="console" />}
+    <TouchableRipple
       onPress={() => router.push(`/session/${encodeURIComponent(item.name)}`)}
-      style={{ backgroundColor: theme.colors.surface, marginBottom: 1 }}
-    />
+      rippleColor="rgba(113, 92, 215, 0.12)"
+      style={[styles.sessionRow, { borderBottomColor: Colors.jules.border }]}
+    >
+      <View style={styles.sessionRowInner}>
+        <StatusDot state={item.state} />
+        <View style={styles.sessionTextContainer}>
+          <Text
+            numberOfLines={1}
+            style={[styles.sessionTitle, { color: theme.colors.onSurface }]}
+          >
+            {item.title || item.name}
+          </Text>
+          {item.prompt ? (
+            <Text
+              numberOfLines={1}
+              style={[styles.sessionSubtitle, { color: theme.colors.onSurfaceVariant }]}
+            >
+              {item.prompt}
+            </Text>
+          ) : null}
+        </View>
+        <MaterialCommunityIcons
+          name="chevron-right"
+          size={18}
+          color={Colors.jules.textSecondary}
+          style={{ flexShrink: 0 }}
+        />
+      </View>
+    </TouchableRipple>
   );
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Quick create input — taps into create screen */}
+      <TouchableRipple
+        onPress={() => router.push({ pathname: '/create', params: { prefetchedSources: JSON.stringify(sources) } })}
+        rippleColor="rgba(113, 92, 215, 0.15)"
+        style={[styles.quickCreate, { backgroundColor: theme.colors.surfaceVariant, borderColor: Colors.jules.border }]}
+      >
+        <View style={styles.quickCreateInner}>
+          <Text style={[styles.quickCreateText, { color: theme.colors.onSurfaceVariant }]}>
+            {t('describeTask')}
+          </Text>
+          <View style={[styles.quickCreateArrow, { backgroundColor: Colors.jules.primary }]}>
+            <MaterialCommunityIcons name="arrow-right" size={16} color="#fff" />
+          </View>
+        </View>
+      </TouchableRipple>
+
+      {/* Search bar */}
+      <View style={styles.searchContainer}>
+        <Searchbar
+          placeholder={t('searchSessions')}
+          onChangeText={setSearchQuery}
+          value={searchQuery}
+          style={[styles.searchBar, { backgroundColor: theme.colors.surface }]}
+          inputStyle={{ color: theme.colors.onSurface, fontSize: 14 }}
+          iconColor={Colors.jules.textSecondary}
+          placeholderTextColor={Colors.jules.textSecondary}
+        />
+      </View>
+
+      {/* Repository filter */}
+      {sources.length > 0 && (
+        <View style={styles.filterContainer}>
+          <Menu
+            visible={menuVisible}
+            onDismiss={() => setMenuVisible(false)}
+            contentStyle={{ backgroundColor: theme.colors.surfaceVariant }}
+            anchor={
+              <TouchableOpacity
+                onPress={() => setMenuVisible(true)}
+                style={[styles.filterButton, { borderColor: Colors.jules.border, backgroundColor: theme.colors.surface }]}
+              >
+                <MaterialCommunityIcons
+                  name="source-repository"
+                  size={14}
+                  color={Colors.jules.textSecondary}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={[styles.filterButtonText, { color: theme.colors.onSurface }]} numberOfLines={1}>
+                  {selectedSource ? getSourceLabel(selectedSource) : t('allRepositories')}
+                </Text>
+                <MaterialCommunityIcons
+                  name="chevron-down"
+                  size={14}
+                  color={Colors.jules.textSecondary}
+                  style={{ marginLeft: 4 }}
+                />
+              </TouchableOpacity>
+            }
+          >
+            <Menu.Item
+              onPress={() => {
+                setSelectedSource(null);
+                setMenuVisible(false);
+              }}
+              title={t('allRepositories')}
+            />
+            {sources.map(source => (
+              <Menu.Item
+                key={source.name}
+                onPress={() => {
+                  setSelectedSource(source.name);
+                  setMenuVisible(false);
+                }}
+                title={`${source.githubRepo.owner}/${source.githubRepo.repo}`}
+              />
+            ))}
+          </Menu>
+        </View>
+      )}
+
+      {/* Sessions list */}
       {loading && sessions.length === 0 ? (
-        <ActivityIndicator style={{ marginTop: 20 }} />
+        <ActivityIndicator style={{ marginTop: 40 }} color={Colors.jules.primary} />
       ) : (
         <FlatList
-          data={sessions}
+          data={filteredSessions}
           renderItem={renderItem}
           keyExtractor={item => item.name}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={loadSessions} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={loadData}
+              colors={[Colors.jules.primary]}
+              tintColor={Colors.jules.primary}
+            />
+          }
+          ListHeaderComponent={
+            filteredSessions.length > 0 ? (
+              <View style={[styles.listHeader, { borderBottomColor: Colors.jules.border }]}>
+                <Text style={[styles.listHeaderText, { color: theme.colors.onSurfaceVariant }]}>
+                  {t('recentSessions')}
+                </Text>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text>No sessions found.</Text>
+              <MaterialCommunityIcons
+                name="robot-outline"
+                size={56}
+                color={Colors.jules.primary}
+                style={{ opacity: 0.35, marginBottom: 16 }}
+              />
+              <Text style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>
+                {t('noSessions')}
+              </Text>
             </View>
           }
         />
       )}
-      <FAB
-        icon="plus"
-        style={[styles.fab, { backgroundColor: theme.colors.primaryContainer }]}
-        onPress={() => router.push('/create')}
-        color={theme.colors.onPrimaryContainer}
-      />
+
+      <Snackbar
+        visible={!!error}
+        onDismiss={() => setError(null)}
+        duration={3000}
+        style={{ backgroundColor: Colors.jules.statusFailed }}
+      >
+        {error}
+      </Snackbar>
     </View>
   );
 }
@@ -70,14 +264,98 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  fab: {
-    position: 'absolute',
+  quickCreate: {
     margin: 16,
-    right: 0,
-    bottom: 0,
+    marginBottom: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  quickCreateInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    paddingHorizontal: 16,
+  },
+  quickCreateText: {
+    flex: 1,
+    fontSize: 14,
+  },
+  quickCreateArrow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  searchBar: {
+    borderRadius: 10,
+    elevation: 0,
+    height: 42,
+  },
+  filterContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+    maxWidth: 220,
+  },
+  filterButtonText: {
+    fontSize: 13,
+    flex: 1,
+  },
+  listHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  listHeaderText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sessionRow: {
+    borderBottomWidth: 1,
+  },
+  sessionRowInner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  sessionTextContainer: {
+    flex: 1,
+    marginRight: 8,
+  },
+  sessionTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  sessionSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
   },
   empty: {
-    padding: 20,
+    paddingTop: 60,
     alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyText: {
+    fontSize: 14,
+    textAlign: 'center',
   },
 });

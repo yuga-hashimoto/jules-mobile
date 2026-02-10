@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { TextInput, Button, Text, useTheme } from 'react-native-paper';
+import { TextInput, Button, Snackbar, Text, useTheme } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { getApiKey, setApiKey } from '../../services/jules';
 
 export default function SettingsScreen() {
   const [apiKey, setApiKeyState] = useState('');
   const [loading, setLoading] = useState(false);
+  const [snackVisible, setSnackVisible] = useState(false);
+  const [snackMessage, setSnackMessage] = useState('');
   const theme = useTheme();
   const { t } = useTranslation();
 
@@ -21,16 +23,19 @@ export default function SettingsScreen() {
 
   const handleSave = async () => {
     setLoading(true);
-    await setApiKey(apiKey);
-    setLoading(false);
+    try {
+      await setApiKey(apiKey);
+      setSnackMessage(t('saved'));
+    } catch {
+      setSnackMessage(t('saveFailed'));
+    } finally {
+      setLoading(false);
+      setSnackVisible(true);
+    }
   };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Text variant="headlineMedium" style={{ marginBottom: 20, color: theme.colors.onBackground }}>
-        {t('settings')}
-      </Text>
-      
       <TextInput
         label={t('apiKey')}
         value={apiKey}
@@ -43,10 +48,19 @@ export default function SettingsScreen() {
       <Button mode="contained" onPress={handleSave} loading={loading}>
         {t('save')}
       </Button>
-      
-      <Text variant="bodySmall" style={{ marginTop: 20, color: theme.colors.secondary }}>
-        Get your API key from Google Cloud Console.
+
+      <Text variant="bodySmall" style={{ marginTop: 20, color: theme.colors.onSurfaceVariant }}>
+        {t('apiKeyHelp')}
       </Text>
+
+      <Snackbar
+        visible={snackVisible}
+        onDismiss={() => setSnackVisible(false)}
+        duration={2500}
+        action={{ label: 'OK', onPress: () => setSnackVisible(false) }}
+      >
+        {snackMessage}
+      </Snackbar>
     </View>
   );
 }

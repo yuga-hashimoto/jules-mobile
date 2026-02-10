@@ -66,10 +66,11 @@ export const JulesApi = {
     return res.data;
   },
   getSession: async (sessionId: string) => {
-    const res = await client.get(`/sessions/${sessionId}`);
+    const id = sessionId.startsWith('sessions/') ? sessionId.split('/')[1] : sessionId;
+    const res = await client.get(`/sessions/${id}`);
     return res.data;
   },
-  listActivities: async (sessionId: string, pageSize = 50) => {
+  listActivities: async (sessionId: string, pageSize = 100) => {
     // Session ID might be full path "sessions/..." or just ID. API expects path in URL.
     // If input is just ID, prepend sessions/
     const id = sessionId.startsWith('sessions/') ? sessionId.split('/')[1] : sessionId;
