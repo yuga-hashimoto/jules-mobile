@@ -17,7 +17,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
 
       - name: Setup Java
@@ -50,6 +50,11 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           cd android
+          # Workaround for Expo/Metro bundle issue in GH Actions
+          # "configs.toReversed is not a function" suggests Node version issue or polyfill missing.
+          # Node 18 should have toReversed? No, added in Node 20.
+          # Let's upgrade Node version to 20 in Setup Node step.
+          
           if [ -n "$KEYSTORE_BASE64" ] && [ -f "release.keystore" ]; then
             echo "Signing with provided keystore..."
             ./gradlew assembleRelease \
@@ -59,8 +64,6 @@ jobs:
               -Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD
           else
             echo "No keystore secret found. Building unsigned/debug release..."
-            # If no secret, we fall back to debug to ensure build passes, OR build unsigned release.
-            # Building unsigned release:
             ./gradlew assembleRelease
             echo "⚠️  APK IS UNSIGNED. You must sign it manually before installing."
           fi
