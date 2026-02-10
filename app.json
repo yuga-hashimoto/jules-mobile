@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Jules Mobile",
-    "slug": "jules-mobile-client",
+    "slug": "jules-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

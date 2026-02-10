@@ -1,4 +1,4 @@
-# Jules Mobile Client
+# Jules Mobile
 
 A cross-platform (iOS/Android/Web) mobile client for Google's Jules AI coding assistant, built with React Native and Expo.
 
