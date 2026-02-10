@@ -6,10 +6,13 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,12 +38,21 @@ jobs:
       - name: Prebuild
         run: npx expo prebuild --platform android
 
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            android/.gradle
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/build.gradle', 'android/app/build.gradle') }}
+          restore-keys: gradle-${{ runner.os }}-
+
       - name: Decode Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         if: ${{ env.KEYSTORE_BASE64 != '' }}
-        run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
+        run: echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
 
       - name: Build Release APK
         env:
@@ -50,20 +62,19 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           cd android
-          # Workaround for Expo/Metro bundle issue in GH Actions
-          # "configs.toReversed is not a function" suggests Node version issue or polyfill missing.
-          # Node 18 should have toReversed? No, added in Node 20.
-          # Let's upgrade Node version to 20 in Setup Node step.
-          
-          if [ -n "$KEYSTORE_BASE64" ] && [ -f "release.keystore" ]; then
+
+          # Build only arm64 (covers 99%+ of modern devices) to speed up CI
+          export ORG_GRADLE_PROJECT_reactNativeArchitectures=arm64-v8a
+
+          if [ -n "$KEYSTORE_BASE64" ] && [ -f "app/release.keystore" ]; then
             echo "Signing with provided keystore..."
             ./gradlew assembleRelease \
-              -Pandroid.injected.signing.store.file=$(pwd)/release.keystore \
+              -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
               -Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD \
               -Pandroid.injected.signing.key.alias=$ANDROID_KEY_ALIAS \
               -Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD
           else
-            echo "No keystore secret found. Building unsigned/debug release..."
+            echo "No keystore secret found. Building unsigned release..."
             ./gradlew assembleRelease
             echo "⚠️  APK IS UNSIGNED. You must sign it manually before installing."
           fi
@@ -76,6 +87,6 @@ jobs:
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: android/app/build/outputs/apk/release/app-release.apk

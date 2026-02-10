@@ -1,4 +1,4 @@
-name: Build iOS (IPA)
+name: Build iOS (Simulator)
 
 on:
   workflow_dispatch:
@@ -6,10 +6,13 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,7 +20,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
 
       - name: Install Dependencies
@@ -26,35 +29,40 @@ jobs:
       - name: Prebuild
         run: npx expo prebuild --platform ios
 
-      - name: Build IPA (AdHoc/Simulator)
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: pods-${{ runner.os }}-
+
+      - name: Install Pods
+        run: cd ios && pod install
+
+      - name: Build Simulator App
         run: |
-          # Note: Building a real signed IPA for physical devices requires an Apple Developer Account, 
-          # Certificates, and Provisioning Profiles. Without these secrets, we cannot build a valid IPA.
-          # We will build for Simulator (.app) as a placeholder, or attempt a build that fails signing.
-          # 
-          # For Open Source / Non-paying users:
-          # Best practice is to use EAS Build (Expo Application Services).
-          # Since this is a GH Action request, we'll output a Simulator Build payload.
-          
-          npx expo run:ios --configuration Release --no-build-server --scheme "Jules Mobile" 
-          # This command tries to run it. We need xcodebuild.
-          
           cd ios
-          pod install
-          xcodebuild -workspace JulesMobile.xcworkspace -scheme "Jules Mobile" -configuration Release -sdk iphonesimulator -derivedDataPath build
-          
-          # Zip the .app for simulator
+          xcodebuild \
+            -workspace JulesMobile.xcworkspace \
+            -scheme "Jules Mobile" \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -arch arm64 \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            | tail -20
+
           cd build/Build/Products/Release-iphonesimulator
-          zip -r JulesMobile.app.zip JulesMobile.app
+          zip -r JulesMobile-simulator.app.zip "Jules Mobile.app" || zip -r JulesMobile-simulator.app.zip *.app
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: jules-mobile-ios-simulator
-          path: ios/build/Build/Products/Release-iphonesimulator/JulesMobile.app.zip
+          path: ios/build/Build/Products/Release-iphonesimulator/JulesMobile-simulator.app.zip
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: ios/build/Build/Products/Release-iphonesimulator/JulesMobile.app.zip
+          files: ios/build/Build/Products/Release-iphonesimulator/JulesMobile-simulator.app.zip
