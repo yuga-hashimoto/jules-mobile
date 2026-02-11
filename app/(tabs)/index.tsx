@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { FlatList, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Menu, Searchbar, Snackbar, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import Colors from '../../constants/Colors';
-import { JulesApi } from '../../services/jules';
+import { JulesApi, Account, getAccounts, getActiveAccountId, setActiveAccountId } from '../../services/jules';
 
 function StatusDot({ state }: { state?: string }) {
   const colorMap: Record<string, string> = {
@@ -43,6 +43,9 @@ export default function SessionsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [accountMenuVisible, setAccountMenuVisible] = useState(false);
+  const [accounts, setAccountsList] = useState<Account[]>([]);
+  const [activeAccountId, setActiveAccId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const theme = useTheme();
   const { t } = useTranslation();
@@ -51,6 +54,12 @@ export default function SessionsScreen() {
     setLoading(true);
     setError(null);
     try {
+      // Load accounts
+      const accs = await getAccounts();
+      setAccountsList(accs);
+      const aid = await getActiveAccountId();
+      setActiveAccId(aid);
+
       const [sessionsData, sourcesData] = await Promise.all([
         JulesApi.listSessions(),
         JulesApi.listSources()
@@ -63,6 +72,18 @@ export default function SessionsScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSwitchAccount = async (id: string) => {
+    await setActiveAccountId(id);
+    setActiveAccId(id);
+    setAccountMenuVisible(false);
+    loadData();
+  };
+
+  const getActiveAccountName = () => {
+    const acc = accounts.find(a => a.id === activeAccountId);
+    return acc?.name || accounts[0]?.name || t('noAccounts');
   };
 
   useFocusEffect(
@@ -155,6 +176,52 @@ export default function SessionsScreen() {
           placeholderTextColor={Colors.jules.textSecondary}
         />
       </View>
+
+      {/* Account selector */}
+      {accounts.length > 1 && (
+        <View style={styles.filterContainer}>
+          <Menu
+            visible={accountMenuVisible}
+            onDismiss={() => setAccountMenuVisible(false)}
+            contentStyle={{ backgroundColor: theme.colors.surfaceVariant }}
+            anchor={
+              <TouchableOpacity
+                onPress={() => setAccountMenuVisible(true)}
+                style={[styles.filterButton, { borderColor: Colors.jules.primary + '66', backgroundColor: theme.colors.surface }]}
+              >
+                <MaterialCommunityIcons
+                  name="account-key-outline"
+                  size={14}
+                  color={Colors.jules.primary}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={[styles.filterButtonText, { color: theme.colors.onSurface }]} numberOfLines={1}>
+                  {getActiveAccountName()}
+                </Text>
+                <MaterialCommunityIcons
+                  name="chevron-down"
+                  size={14}
+                  color={Colors.jules.textSecondary}
+                  style={{ marginLeft: 4 }}
+                />
+              </TouchableOpacity>
+            }
+          >
+            {accounts.map(acc => {
+              const isActive = acc.id === activeAccountId;
+              return (
+                <Menu.Item
+                  key={acc.id}
+                  onPress={() => handleSwitchAccount(acc.id)}
+                  title={acc.name}
+                  titleStyle={{ color: isActive ? Colors.jules.primary : theme.colors.onSurface }}
+                  trailingIcon={isActive ? 'check' : undefined}
+                />
+              );
+            })}
+          </Menu>
+        </View>
+      )}
 
       {/* Repository filter */}
       {sources.length > 0 && (
