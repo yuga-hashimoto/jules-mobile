@@ -1,5 +1,7 @@
 # Jules Mobile
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R5R51S97C4)
+
 A cross-platform (iOS / Android / Web) mobile client for [Google Jules](https://jules.google/) — the AI coding assistant. Built with React Native, Expo, and the Jules REST API (`jules.googleapis.com/v1alpha`).
 
 ## Features
