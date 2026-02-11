@@ -112,3 +112,4 @@ Triggered on `workflow_dispatch` or version tags (`v*`).
 ## License
 
 MIT
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R5R51S97C4)
