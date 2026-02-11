@@ -14,6 +14,9 @@ import {
   View,
 } from 'react-native';
 import { ActivityIndicator, Snackbar, Text, TextInput, useTheme } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Markdown from 'react-native-markdown-display';
+import * as Clipboard from 'expo-clipboard';
 import Colors from '../../constants/Colors';
 import { JulesApi } from '../../services/jules';
 
@@ -396,21 +399,66 @@ function ArtifactsCard({ item }: { item: any }) {
   );
 }
 
-function AgentMessageCard({ text }: { text: string }) {
+function formatTime(timestamp?: string) {
+  if (!timestamp) return '';
+  try {
+    const date = new Date(timestamp);
+    // Simple readable format: YYYY/MM/DD HH:mm
+    return date.toLocaleString();
+  } catch (e) {
+    return '';
+  }
+}
+
+function AgentMessageCard({ text, timestamp }: { text: string; timestamp?: string }) {
+  const theme = useTheme();
+  // Markdown styles
+  const markdownStyles = {
+    body: {
+      color: theme.colors.onSurface,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    link: { color: Colors.jules.primary },
+    code_inline: { backgroundColor: theme.colors.surfaceVariant, color: theme.colors.primary },
+    fence: { backgroundColor: theme.colors.surfaceVariant, color: theme.colors.onSurface },
+  };
+
+  const handleCopy = async () => {
+    await Clipboard.setStringAsync(text);
+  };
+
   return (
     <View style={styles.agentBubble}>
-      <Text style={styles.agentBubbleText}>{text}</Text>
+      <Markdown style={markdownStyles}>
+        {text}
+      </Markdown>
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4, alignItems: 'center' }}>
+        {timestamp && (
+          <Text style={{ fontSize: 10, color: Colors.jules.textSecondary, marginRight: 8, opacity: 0.8 }}>
+            {formatTime(timestamp)}
+          </Text>
+        )}
+        <TouchableOpacity onPress={handleCopy} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <MaterialCommunityIcons name="content-copy" size={14} color={Colors.jules.textSecondary} style={{ opacity: 0.6 }} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
-function UserMessageCard({ text }: { text: string }) {
+function UserMessageCard({ text, timestamp }: { text: string; timestamp?: string }) {
   const theme = useTheme();
   return (
     <View style={[styles.userBubble, { backgroundColor: theme.colors.primaryContainer }]}>
-      <Text style={{ color: theme.colors.onPrimaryContainer, lineHeight: 20, fontSize: 14 }}>
+      <Text selectable style={{ color: theme.colors.onPrimaryContainer, lineHeight: 20, fontSize: 14 }}>
         {text}
       </Text>
+      {timestamp && (
+        <Text style={{ fontSize: 10, color: theme.colors.onPrimaryContainer, marginTop: 4, alignSelf: 'flex-end', opacity: 0.7 }}>
+          {formatTime(timestamp)}
+        </Text>
+      )}
     </View>
   );
 }
@@ -429,6 +477,7 @@ export default function SessionDetailScreen() {
   const prevActivitiesLength = useRef(0);
   const theme = useTheme();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     loadSessionMeta();
@@ -556,19 +605,19 @@ export default function SessionDetailScreen() {
 
     if (item.agentMessaged) {
       const text = item.agentMessaged.agentMessage || item.agentMessaged.message || '';
-      return <AgentMessageCard text={text} />;
+      return <AgentMessageCard text={text} timestamp={item.createTime} />;
     }
 
     if (item.userMessaged) {
-      return <UserMessageCard text={item.userMessaged.userMessage || ''} />;
+      return <UserMessageCard text={item.userMessaged.userMessage || ''} timestamp={item.createTime} />;
     }
 
     if (item.message) {
       const text = item.message.text || '';
       if (item.originator === 'user') {
-        return <UserMessageCard text={text} />;
+        return <UserMessageCard text={text} timestamp={item.createTime || item.message.created_at} />;
       }
-      return <AgentMessageCard text={text} />;
+      return <AgentMessageCard text={text} timestamp={item.createTime || item.message.created_at} />;
     }
 
     return null;
@@ -629,7 +678,7 @@ export default function SessionDetailScreen() {
         }
       />
 
-      <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, borderTopColor: Colors.jules.border }]}>
+      <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, borderTopColor: Colors.jules.border, paddingBottom: Math.max(insets.bottom, 10) }]}>
         <TextInput
           mode="outlined"
           value={inputText}
