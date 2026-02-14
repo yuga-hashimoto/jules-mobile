@@ -500,7 +500,7 @@ export default function SessionDetailScreen() {
       const data = await JulesApi.getSession(decodeURIComponent(id as string));
       setSession(data);
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
     }
   };
 
@@ -510,7 +510,7 @@ export default function SessionDetailScreen() {
       const data = await JulesApi.listActivities(decodeURIComponent(id as string));
       setActivities(data.activities || []);
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
     }
   };
 
@@ -523,7 +523,7 @@ export default function SessionDetailScreen() {
       await JulesApi.sendMessage(decodeURIComponent(id as string), text);
       await loadActivities();
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
       setError(t('errorLoading'));
     } finally {
       setLoading(false);
@@ -537,7 +537,7 @@ export default function SessionDetailScreen() {
       await loadActivities();
       await loadSessionMeta();
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
       setError(t('errorLoading'));
     }
   };

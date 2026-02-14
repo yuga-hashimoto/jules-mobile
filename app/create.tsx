@@ -40,7 +40,7 @@ export default function CreateSessionScreen() {
         setSelectedSource(data.sources[0].name);
       }
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
       setError(t('errorLoading'));
     }
   };
@@ -52,7 +52,7 @@ export default function CreateSessionScreen() {
       await JulesApi.createSession(prompt, selectedSource);
       router.back();
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
       setError(t('errorLoading'));
     } finally {
       setLoading(false);
