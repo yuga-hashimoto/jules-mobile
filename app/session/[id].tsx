@@ -19,6 +19,7 @@ import Markdown from 'react-native-markdown-display';
 import * as Clipboard from 'expo-clipboard';
 import Colors from '../../constants/Colors';
 import { JulesApi } from '../../services/jules';
+import PromptSelector from '../../components/PromptSelector';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -469,6 +470,7 @@ export default function SessionDetailScreen() {
   const [activities, setActivities] = useState<any[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [promptSelectorVisible, setPromptSelectorVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Per-item state maps
   const [planStepExpanded, setPlanStepExpanded] = useState<Record<string, Record<number, boolean>>>({});
@@ -686,6 +688,13 @@ export default function SessionDetailScreen() {
           placeholder={t('sendMessage')}
           style={styles.input}
           outlineStyle={{ borderColor: Colors.jules.border, borderRadius: 10 }}
+          left={
+            <TextInput.Icon
+              icon="creation"
+              onPress={() => setPromptSelectorVisible(true)}
+              color={Colors.jules.primary}
+            />
+          }
           right={
             <TextInput.Icon
               icon="send"
@@ -696,6 +705,12 @@ export default function SessionDetailScreen() {
           }
         />
       </View>
+
+      <PromptSelector
+        visible={promptSelectorVisible}
+        onDismiss={() => setPromptSelectorVisible(false)}
+        onSelect={(text) => setInputText(text)}
+      />
 
       <Snackbar visible={!!error} onDismiss={() => setError(null)} duration={3000}>
         {error}

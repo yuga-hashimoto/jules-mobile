@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { router, useLocalSearchParams } from 'expo-router';
 import { JulesApi } from '../services/jules';
 import Colors from '../constants/Colors';
+import PromptSelector from '../components/PromptSelector';
 
 export default function CreateSessionScreen() {
   const { prefetchedSources } = useLocalSearchParams<{ prefetchedSources?: string }>();
@@ -14,6 +15,7 @@ export default function CreateSessionScreen() {
   const [selectedSource, setSelectedSource] = useState('');
   const [menuVisible, setMenuVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [promptSelectorVisible, setPromptSelectorVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const theme = useTheme();
   const { t } = useTranslation();
@@ -139,6 +141,19 @@ export default function CreateSessionScreen() {
         placeholder={t('describeTask')}
         style={{ marginBottom: 20 }}
         outlineStyle={{ borderColor: Colors.jules.border, borderRadius: 10 }}
+        right={
+          <TextInput.Icon
+            icon="creation"
+            onPress={() => setPromptSelectorVisible(true)}
+            color={Colors.jules.primary}
+          />
+        }
+      />
+
+      <PromptSelector
+        visible={promptSelectorVisible}
+        onDismiss={() => setPromptSelectorVisible(false)}
+        onSelect={(text) => setPrompt(text)}
       />
 
       <View style={styles.actions}>
