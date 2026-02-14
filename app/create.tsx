@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { TextInput, Button, useTheme, Text, Snackbar, Menu } from 'react-native-paper';
+import { TextInput, Button, useTheme, Text, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { router, useLocalSearchParams } from 'expo-router';
 import { JulesApi } from '../services/jules';
 import Colors from '../constants/Colors';
+import { DropdownSelector } from '../components/DropdownSelector';
 import PromptSelector from '../components/PromptSelector';
 
 export default function CreateSessionScreen() {
@@ -13,7 +14,6 @@ export default function CreateSessionScreen() {
   const [prompt, setPrompt] = useState('');
   const [sources, setSources] = useState<any[]>([]);
   const [selectedSource, setSelectedSource] = useState('');
-  const [menuVisible, setMenuVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [promptSelectorVisible, setPromptSelectorVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,10 +61,10 @@ export default function CreateSessionScreen() {
     }
   };
 
-  const getSelectedLabel = () => {
-    const source = sources.find(s => s.name === selectedSource);
-    return source ? `${source.githubRepo.owner}/${source.githubRepo.repo}` : t('sources');
-  };
+  const sourceOptions = sources.map(source => ({
+    label: `${source.githubRepo.owner}/${source.githubRepo.repo}`,
+    value: source.name,
+  }));
 
   return (
     <ScrollView
@@ -79,52 +79,14 @@ export default function CreateSessionScreen() {
       </Text>
 
       {/* Dropdown selector */}
-      <Menu
-        visible={menuVisible}
-        onDismiss={() => setMenuVisible(false)}
-        contentStyle={{ backgroundColor: theme.colors.surfaceVariant }}
-        anchor={
-          <TouchableOpacity
-            onPress={() => setMenuVisible(true)}
-            style={[styles.selector, { backgroundColor: theme.colors.surface, borderColor: Colors.jules.border }]}
-          >
-            <MaterialCommunityIcons
-              name="source-repository"
-              size={16}
-              color={Colors.jules.textSecondary}
-              style={{ marginRight: 10 }}
-            />
-            <Text
-              style={[styles.selectorText, { color: selectedSource ? theme.colors.onSurface : theme.colors.onSurfaceVariant }]}
-              numberOfLines={1}
-            >
-              {getSelectedLabel()}
-            </Text>
-            <MaterialCommunityIcons
-              name={menuVisible ? 'chevron-up' : 'chevron-down'}
-              size={18}
-              color={Colors.jules.textSecondary}
-            />
-          </TouchableOpacity>
-        }
-      >
-        {sources.map(source => {
-          const label = `${source.githubRepo.owner}/${source.githubRepo.repo}`;
-          const isSelected = source.name === selectedSource;
-          return (
-            <Menu.Item
-              key={source.name}
-              onPress={() => {
-                setSelectedSource(source.name);
-                setMenuVisible(false);
-              }}
-              title={label}
-              titleStyle={{ color: isSelected ? Colors.jules.primary : theme.colors.onSurface }}
-              trailingIcon={isSelected ? 'check' : undefined}
-            />
-          );
-        })}
-      </Menu>
+      <DropdownSelector
+        value={selectedSource}
+        options={sourceOptions}
+        onSelect={(val) => setSelectedSource(val || '')}
+        placeholder={t('sources')}
+        iconName="source-repository"
+        style={{ marginBottom: 4 }}
+      />
 
       <Text
         variant="titleSmall"
@@ -197,19 +159,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     fontSize: 11,
-  },
-  selector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginBottom: 4,
-  },
-  selectorText: {
-    flex: 1,
-    fontSize: 14,
   },
   actions: {
     flexDirection: 'row',

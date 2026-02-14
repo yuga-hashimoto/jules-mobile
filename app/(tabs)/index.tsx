@@ -3,9 +3,10 @@ import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, Menu, Searchbar, Snackbar, Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Searchbar, Snackbar, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import Colors from '../../constants/Colors';
 import { JulesApi, Account, getAccounts, getActiveAccountId, setActiveAccountId } from '../../services/jules';
+import { DropdownSelector } from '../../components/DropdownSelector';
 
 function StatusDot({ state }: { state?: string }) {
   const colorMap: Record<string, string> = {
@@ -41,8 +42,6 @@ export default function SessionsScreen() {
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [accountMenuVisible, setAccountMenuVisible] = useState(false);
   const [accounts, setAccountsList] = useState<Account[]>([]);
   const [activeAccountId, setActiveAccId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,13 +75,7 @@ export default function SessionsScreen() {
   const handleSwitchAccount = async (id: string) => {
     await setActiveAccountId(id);
     setActiveAccId(id);
-    setAccountMenuVisible(false);
     loadData();
-  };
-
-  const getActiveAccountName = () => {
-    const acc = accounts.find(a => a.id === activeAccountId);
-    return acc?.name || accounts[0]?.name || t('noAccounts');
   };
 
   useFocusEffect(
@@ -105,11 +98,6 @@ export default function SessionsScreen() {
     }
     return filtered;
   }, [sessions, selectedSource, searchQuery]);
-
-  const getSourceLabel = (sourceName: string) => {
-    const source = sources.find(s => s.name === sourceName);
-    return source ? `${source.githubRepo.owner}/${source.githubRepo.repo}` : sourceName;
-  };
 
   const renderItem = ({ item }: { item: any }) => (
     <TouchableRipple
@@ -179,97 +167,41 @@ export default function SessionsScreen() {
       {/* Account selector */}
       {accounts.length > 1 && (
         <View style={styles.filterContainer}>
-          <Menu
-            visible={accountMenuVisible}
-            onDismiss={() => setAccountMenuVisible(false)}
-            contentStyle={{ backgroundColor: theme.colors.surfaceVariant }}
-            anchor={
-              <TouchableOpacity
-                onPress={() => setAccountMenuVisible(true)}
-                style={[styles.filterButton, { borderColor: Colors.jules.primary + '66', backgroundColor: theme.colors.surface }]}
-              >
-                <MaterialCommunityIcons
-                  name="account-key-outline"
-                  size={14}
-                  color={Colors.jules.primary}
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={[styles.filterButtonText, { color: theme.colors.onSurface }]} numberOfLines={1}>
-                  {getActiveAccountName()}
-                </Text>
-                <MaterialCommunityIcons
-                  name="chevron-down"
-                  size={14}
-                  color={Colors.jules.textSecondary}
-                  style={{ marginLeft: 4 }}
-                />
-              </TouchableOpacity>
-            }
-          >
-            {accounts.map(acc => {
-              const isActive = acc.id === activeAccountId;
-              return (
-                <Menu.Item
-                  key={acc.id}
-                  onPress={() => handleSwitchAccount(acc.id)}
-                  title={acc.name}
-                  titleStyle={{ color: isActive ? Colors.jules.primary : theme.colors.onSurface }}
-                  trailingIcon={isActive ? 'check' : undefined}
-                />
-              );
-            })}
-          </Menu>
+          <DropdownSelector
+            value={activeAccountId}
+            options={accounts.map(acc => ({ label: acc.name, value: acc.id }))}
+            onSelect={(id) => id && handleSwitchAccount(id)}
+            placeholder={t('noAccounts')}
+            iconName="account-key-outline"
+            style={[styles.filterButton, { borderColor: Colors.jules.primary + '66' }]}
+            textStyle={styles.filterButtonText}
+            iconSize={14}
+            chevronSize={14}
+          />
         </View>
       )}
 
       {/* Repository filter */}
       {sources.length > 0 && (
         <View style={styles.filterContainer}>
-          <Menu
-            visible={menuVisible}
-            onDismiss={() => setMenuVisible(false)}
-            contentStyle={{ backgroundColor: theme.colors.surfaceVariant }}
-            anchor={
-              <TouchableOpacity
-                onPress={() => setMenuVisible(true)}
-                style={[styles.filterButton, { borderColor: Colors.jules.border, backgroundColor: theme.colors.surface }]}
-              >
-                <MaterialCommunityIcons
-                  name="source-repository"
-                  size={14}
-                  color={Colors.jules.textSecondary}
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={[styles.filterButtonText, { color: theme.colors.onSurface }]} numberOfLines={1}>
-                  {selectedSource ? getSourceLabel(selectedSource) : t('allRepositories')}
-                </Text>
-                <MaterialCommunityIcons
-                  name="chevron-down"
-                  size={14}
-                  color={Colors.jules.textSecondary}
-                  style={{ marginLeft: 4 }}
-                />
-              </TouchableOpacity>
-            }
-          >
-            <Menu.Item
-              onPress={() => {
-                setSelectedSource(null);
-                setMenuVisible(false);
-              }}
-              title={t('allRepositories')}
-            />
-            {sources.map(source => (
-              <Menu.Item
-                key={source.name}
-                onPress={() => {
-                  setSelectedSource(source.name);
-                  setMenuVisible(false);
-                }}
-                title={`${source.githubRepo.owner}/${source.githubRepo.repo}`}
-              />
-            ))}
-          </Menu>
+          <DropdownSelector
+            value={selectedSource}
+            options={[
+              { label: t('allRepositories'), value: null },
+              ...sources.map(source => ({
+                label: `${source.githubRepo.owner}/${source.githubRepo.repo}`,
+                value: source.name,
+              })),
+            ]}
+            onSelect={setSelectedSource}
+            placeholder={t('allRepositories')}
+            iconName="source-repository"
+            style={styles.filterButton}
+            textStyle={styles.filterButtonText}
+            iconSize={14}
+            chevronSize={14}
+            showCheckmark={false}
+          />
         </View>
       )}
 
