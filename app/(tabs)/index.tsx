@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Searchbar, Snackbar, Text, TouchableRipple, useTheme } from 'react-native-paper';
@@ -38,7 +38,6 @@ function StatusDot({ state }: { state?: string }) {
 
 export default function SessionsScreen() {
   const [sessions, setSessions] = useState<any[]>([]);
-  const [filteredSessions, setFilteredSessions] = useState<any[]>([]);
   const [sources, setSources] = useState<any[]>([]);
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,7 +65,7 @@ export default function SessionsScreen() {
       setSessions(sessionsData.sessions || []);
       setSources(sourcesData.sources || []);
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
       setError(t('errorLoading'));
     } finally {
       setLoading(false);
@@ -85,7 +84,7 @@ export default function SessionsScreen() {
     }, [])
   );
 
-  useEffect(() => {
+  const filteredSessions = useMemo(() => {
     let filtered = sessions;
     if (selectedSource) {
       filtered = filtered.filter(s => s.sourceContext?.source === selectedSource);
@@ -97,7 +96,7 @@ export default function SessionsScreen() {
         (s.prompt || '').toLowerCase().includes(q)
       );
     }
-    setFilteredSessions(filtered);
+    return filtered;
   }, [sessions, selectedSource, searchQuery]);
 
   const renderItem = ({ item }: { item: any }) => (
