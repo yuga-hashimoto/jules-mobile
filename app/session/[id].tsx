@@ -40,7 +40,11 @@ function StatusDot({ state }: { state?: string }) {
   };
   const color = (state && colorMap[state]) || Colors.jules.textSecondary;
   return (
-    <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: color, marginRight: 8, flexShrink: 0 }} />
+    <View
+      accessibilityLabel={state || 'Status'}
+      accessibilityRole="image"
+      style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: color, marginRight: 8, flexShrink: 0 }}
+    />
   );
 }
 
@@ -109,6 +113,17 @@ function PlanCard({
   const PREVIEW = 2;
   const visible = showAll ? steps : steps.slice(0, PREVIEW);
   const hasMore = steps.length > PREVIEW;
+  const [approving, setApproving] = useState(false);
+
+  const handleApprove = async () => {
+    if (approving) return;
+    setApproving(true);
+    try {
+      await onApprove();
+    } finally {
+      setApproving(false);
+    }
+  };
 
   return (
     <View style={styles.card}>
@@ -139,9 +154,18 @@ function PlanCard({
           />
         </TouchableOpacity>
       )}
-      <TouchableOpacity onPress={onApprove} style={styles.approveBtn} activeOpacity={0.8}>
-        <MaterialCommunityIcons name="check" size={15} color="#fff" style={{ marginRight: 6 }} />
-        <Text style={styles.approveBtnText}>{t('approvePlan')}</Text>
+      <TouchableOpacity
+        onPress={handleApprove}
+        style={[styles.approveBtn, approving && { opacity: 0.7 }]}
+        activeOpacity={0.8}
+        disabled={approving}
+      >
+        {approving ? (
+          <ActivityIndicator size="small" color="#fff" style={{ marginRight: 6 }} />
+        ) : (
+          <MaterialCommunityIcons name="check" size={15} color="#fff" style={{ marginRight: 6 }} />
+        )}
+        <Text style={styles.approveBtnText}>{approving ? t('working') : t('approvePlan')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -692,6 +716,7 @@ export default function SessionDetailScreen() {
               onPress={handleSend}
               disabled={loading || !inputText.trim()}
               color={inputText.trim() ? Colors.jules.primary : Colors.jules.textSecondary}
+              accessibilityLabel={t('sendMessage')}
             />
           }
         />
