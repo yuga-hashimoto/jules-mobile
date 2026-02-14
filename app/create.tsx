@@ -7,6 +7,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { JulesApi } from '../services/jules';
 import Colors from '../constants/Colors';
 import { DropdownSelector } from '../components/DropdownSelector';
+import PromptSelector from '../components/PromptSelector';
 
 export default function CreateSessionScreen() {
   const { prefetchedSources } = useLocalSearchParams<{ prefetchedSources?: string }>();
@@ -14,6 +15,7 @@ export default function CreateSessionScreen() {
   const [sources, setSources] = useState<any[]>([]);
   const [selectedSource, setSelectedSource] = useState('');
   const [loading, setLoading] = useState(false);
+  const [promptSelectorVisible, setPromptSelectorVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const theme = useTheme();
   const { t } = useTranslation();
@@ -40,7 +42,7 @@ export default function CreateSessionScreen() {
         setSelectedSource(data.sources[0].name);
       }
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
       setError(t('errorLoading'));
     }
   };
@@ -52,7 +54,7 @@ export default function CreateSessionScreen() {
       await JulesApi.createSession(prompt, selectedSource);
       router.back();
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
       setError(t('errorLoading'));
     } finally {
       setLoading(false);
@@ -101,6 +103,19 @@ export default function CreateSessionScreen() {
         placeholder={t('describeTask')}
         style={{ marginBottom: 20 }}
         outlineStyle={{ borderColor: Colors.jules.border, borderRadius: 10 }}
+        right={
+          <TextInput.Icon
+            icon="creation"
+            onPress={() => setPromptSelectorVisible(true)}
+            color={Colors.jules.primary}
+          />
+        }
+      />
+
+      <PromptSelector
+        visible={promptSelectorVisible}
+        onDismiss={() => setPromptSelectorVisible(false)}
+        onSelect={(text) => setPrompt(text)}
       />
 
       <View style={styles.actions}>

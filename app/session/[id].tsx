@@ -19,6 +19,7 @@ import Markdown from 'react-native-markdown-display';
 import * as Clipboard from 'expo-clipboard';
 import Colors from '../../constants/Colors';
 import { JulesApi } from '../../services/jules';
+import PromptSelector from '../../components/PromptSelector';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -40,7 +41,11 @@ function StatusDot({ state }: { state?: string }) {
   };
   const color = (state && colorMap[state]) || Colors.jules.textSecondary;
   return (
-    <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: color, marginRight: 8, flexShrink: 0 }} />
+    <View
+      accessibilityLabel={state || 'Status'}
+      accessibilityRole="image"
+      style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: color, marginRight: 8, flexShrink: 0 }}
+    />
   );
 }
 
@@ -109,6 +114,17 @@ function PlanCard({
   const PREVIEW = 2;
   const visible = showAll ? steps : steps.slice(0, PREVIEW);
   const hasMore = steps.length > PREVIEW;
+  const [approving, setApproving] = useState(false);
+
+  const handleApprove = async () => {
+    if (approving) return;
+    setApproving(true);
+    try {
+      await onApprove();
+    } finally {
+      setApproving(false);
+    }
+  };
 
   return (
     <View style={styles.card}>
@@ -139,9 +155,18 @@ function PlanCard({
           />
         </TouchableOpacity>
       )}
-      <TouchableOpacity onPress={onApprove} style={styles.approveBtn} activeOpacity={0.8}>
-        <MaterialCommunityIcons name="check" size={15} color="#fff" style={{ marginRight: 6 }} />
-        <Text style={styles.approveBtnText}>{t('approvePlan')}</Text>
+      <TouchableOpacity
+        onPress={handleApprove}
+        style={[styles.approveBtn, approving && { opacity: 0.7 }]}
+        activeOpacity={0.8}
+        disabled={approving}
+      >
+        {approving ? (
+          <ActivityIndicator size="small" color="#fff" style={{ marginRight: 6 }} />
+        ) : (
+          <MaterialCommunityIcons name="check" size={15} color="#fff" style={{ marginRight: 6 }} />
+        )}
+        <Text style={styles.approveBtnText}>{approving ? t('working') : t('approvePlan')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -469,6 +494,7 @@ export default function SessionDetailScreen() {
   const [activities, setActivities] = useState<any[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [promptSelectorVisible, setPromptSelectorVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Per-item state maps
   const [planStepExpanded, setPlanStepExpanded] = useState<Record<string, Record<number, boolean>>>({});
@@ -500,7 +526,7 @@ export default function SessionDetailScreen() {
       const data = await JulesApi.getSession(decodeURIComponent(id as string));
       setSession(data);
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
     }
   };
 
@@ -510,7 +536,7 @@ export default function SessionDetailScreen() {
       const data = await JulesApi.listActivities(decodeURIComponent(id as string));
       setActivities(data.activities || []);
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
     }
   };
 
@@ -523,7 +549,7 @@ export default function SessionDetailScreen() {
       await JulesApi.sendMessage(decodeURIComponent(id as string), text);
       await loadActivities();
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
       setError(t('errorLoading'));
     } finally {
       setLoading(false);
@@ -537,7 +563,7 @@ export default function SessionDetailScreen() {
       await loadActivities();
       await loadSessionMeta();
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
       setError(t('errorLoading'));
     }
   };
@@ -686,16 +712,30 @@ export default function SessionDetailScreen() {
           placeholder={t('sendMessage')}
           style={styles.input}
           outlineStyle={{ borderColor: Colors.jules.border, borderRadius: 10 }}
+          left={
+            <TextInput.Icon
+              icon="creation"
+              onPress={() => setPromptSelectorVisible(true)}
+              color={Colors.jules.primary}
+            />
+          }
           right={
             <TextInput.Icon
               icon="send"
               onPress={handleSend}
               disabled={loading || !inputText.trim()}
               color={inputText.trim() ? Colors.jules.primary : Colors.jules.textSecondary}
+              accessibilityLabel={t('sendMessage')}
             />
           }
         />
       </View>
+
+      <PromptSelector
+        visible={promptSelectorVisible}
+        onDismiss={() => setPromptSelectorVisible(false)}
+        onSelect={(text) => setInputText(text)}
+      />
 
       <Snackbar visible={!!error} onDismiss={() => setError(null)} duration={3000}>
         {error}
