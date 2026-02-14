@@ -67,7 +67,7 @@ export default function SessionsScreen() {
       setSessions(sessionsData.sessions || []);
       setSources(sourcesData.sources || []);
     } catch (e) {
-      console.error(e);
+      console.error(e?.message || e);
       setError(t('errorLoading'));
     } finally {
       setLoading(false);
