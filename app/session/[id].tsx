@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import { useLocalSearchParams, router } from 'expo-router';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   FlatList,
@@ -12,13 +12,15 @@ import {
   TouchableOpacity,
   UIManager,
   View,
+  Alert,
+  ActivityIndicator as RNActivityIndicator,
 } from 'react-native';
-import { ActivityIndicator, Snackbar, Text, TextInput, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Snackbar, Text, TextInput, useTheme, IconButton, Menu, Button } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Markdown from 'react-native-markdown-display';
 import * as Clipboard from 'expo-clipboard';
 import Colors from '../../constants/Colors';
-import { JulesApi } from '../../services/jules';
+import { JulesApi, type Activity, type Session, fetchAllActivities } from '../../services/jules';
 import PromptSelector from '../../components/PromptSelector';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -490,12 +492,15 @@ function UserMessageCard({ text, timestamp }: { text: string; timestamp?: string
 
 export default function SessionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [session, setSession] = useState<any>(null);
-  const [activities, setActivities] = useState<any[]>([]);
+  const [session, setSession] = useState<Session | null>(null);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingActivities, setLoadingActivities] = useState(false);
   const [promptSelectorVisible, setPromptSelectorVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [showingAllActivities, setShowingAllActivities] = useState(false);
   // Per-item state maps
   const [planStepExpanded, setPlanStepExpanded] = useState<Record<string, Record<number, boolean>>>({});
   const [planShowAll, setPlanShowAll] = useState<Record<string, boolean>>({});
@@ -525,19 +530,62 @@ export default function SessionDetailScreen() {
     try {
       const data = await JulesApi.getSession(decodeURIComponent(id as string));
       setSession(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e?.message || e);
+      if (e?.response?.status === 404) {
+        setError(t('sessionNotFound'));
+      }
     }
   };
 
-  const loadActivities = async () => {
+  const loadActivities = async (loadAll = false) => {
     if (!id) return;
     try {
-      const data = await JulesApi.listActivities(decodeURIComponent(id as string));
-      setActivities(data.activities || []);
+      if (loadAll) {
+        setLoadingActivities(true);
+        const allActivities = await fetchAllActivities(decodeURIComponent(id as string));
+        setActivities(allActivities);
+        setShowingAllActivities(true);
+      } else {
+        const data = await JulesApi.listActivities(decodeURIComponent(id as string), { pageSize: 50 });
+        setActivities(data.activities || []);
+        setShowingAllActivities(false);
+      }
     } catch (e) {
       console.error(e?.message || e);
+    } finally {
+      setLoadingActivities(false);
     }
+  };
+
+  const handleDeleteSession = () => {
+    setMenuVisible(false);
+    Alert.alert(
+      t('deleteSession'),
+      t('deleteSessionConfirm', { title: session?.title || session?.id }),
+      [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: t('delete'),
+          style: 'destructive',
+          onPress: async () => {
+            if (!id) return;
+            try {
+              await JulesApi.deleteSession(decodeURIComponent(id as string));
+              router.back();
+            } catch (e: any) {
+              console.error('Failed to delete session:', e);
+              setError(e?.response?.data?.error?.message || t('deleteFailed'));
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleViewActivityDetails = (activity: Activity) => {
+    // Could navigate to a detail screen in the future
+    console.log('Activity details:', activity);
   };
 
   const handleSend = async () => {
@@ -581,7 +629,7 @@ export default function SessionDetailScreen() {
     setPlanShowAll(prev => ({ ...prev, [itemName]: !prev[itemName] }));
   };
 
-  const renderItem = ({ item }: { item: any }) => {
+  const renderItem = ({ item }: { item: Activity }) => {
     if (item.planGenerated) {
       return (
         <PlanCard
@@ -638,14 +686,33 @@ export default function SessionDetailScreen() {
       return <UserMessageCard text={item.userMessaged.userMessage || ''} timestamp={item.createTime} />;
     }
 
-    if (item.message) {
-      const text = item.message.text || '';
-      if (item.originator === 'user') {
-        return <UserMessageCard text={text} timestamp={item.createTime || item.message.created_at} />;
-      }
-      return <AgentMessageCard text={text} timestamp={item.createTime || item.message.created_at} />;
-    }
+    return null;
+  };
 
+  const renderFooter = () => {
+    if (!showingAllActivities && activities.length >= 50) {
+      return (
+        <View style={styles.loadMoreContainer}>
+          <Button
+            mode="outlined"
+            onPress={() => loadActivities(true)}
+            loading={loadingActivities}
+            disabled={loadingActivities}
+            textColor={Colors.jules.primary}
+            style={{ borderColor: Colors.jules.primary }}
+          >
+            {t('loadAllActivities')}
+          </Button>
+        </View>
+      );
+    }
+    if (loadingActivities) {
+      return (
+        <View style={styles.footerLoader}>
+          <RNActivityIndicator size="small" color={Colors.jules.primary} />
+        </View>
+      );
+    }
     return null;
   };
 
@@ -670,9 +737,42 @@ export default function SessionDetailScreen() {
             >
               {session.title || t('sessionDetail')}
             </Text>
+            
+            {/* Menu Button */}
+            <Menu
+              visible={menuVisible}
+              onDismiss={() => setMenuVisible(false)}
+              anchor={
+                <IconButton
+                  icon="dots-vertical"
+                  size={22}
+                  iconColor={theme.colors.onSurfaceVariant}
+                  onPress={() => setMenuVisible(true)}
+                  style={{ margin: 0 }}
+                />
+              }
+            >
+              <Menu.Item
+                onPress={() => {
+                  setMenuVisible(false);
+                  if (session?.url) {
+                    Linking.openURL(session.url);
+                  }
+                }}
+                title={t('openInWeb')}
+                leadingIcon="open-in-new"
+              />
+              <Menu.Item
+                onPress={handleDeleteSession}
+                title={t('deleteSession')}
+                leadingIcon="delete"
+                titleStyle={{ color: Colors.jules.statusFailed }}
+              />
+            </Menu>
+
             {isDone && hasPR && (
               <TouchableOpacity
-                onPress={() => Linking.openURL(session.pullRequest.url)}
+                onPress={() => session.outputs?.[0]?.pullRequest?.url && Linking.openURL(session.outputs[0].pullRequest.url)}
                 style={styles.viewPRBtn}
                 activeOpacity={0.8}
               >
@@ -682,10 +782,12 @@ export default function SessionDetailScreen() {
             )}
           </View>
           {/* Branch name when PR exists */}
-          {session.pullRequest?.branch && (
+          {session.outputs?.[0]?.pullRequest && (
             <View style={styles.branchRow}>
               <MaterialCommunityIcons name="source-branch" size={12} color={Colors.jules.textSecondary} style={{ marginRight: 4 }} />
-              <Text style={styles.branchName} numberOfLines={1}>{session.pullRequest.branch}</Text>
+              <Text style={styles.branchName} numberOfLines={1}>
+                {session.sourceContext?.githubRepoContext?.startingBranch}
+              </Text>
             </View>
           )}
         </View>
@@ -702,6 +804,7 @@ export default function SessionDetailScreen() {
             <ActivityIndicator size="small" color={Colors.jules.primary} />
           </View>
         }
+        ListFooterComponent={renderFooter}
       />
 
       <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, borderTopColor: Colors.jules.border, paddingBottom: Math.max(insets.bottom, 10) }]}>
@@ -1065,4 +1168,12 @@ const styles = StyleSheet.create({
   },
   input: { backgroundColor: 'transparent' },
   emptyActivities: { padding: 40, alignItems: 'center' },
+  loadMoreContainer: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  footerLoader: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
 });

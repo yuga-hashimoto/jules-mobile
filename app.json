@@ -22,7 +22,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.anonymous.julesmobile"
     },
     "web": {
       "bundler": "metro",
@@ -32,7 +33,9 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-localization"
+      "expo-localization",
+      "expo-asset",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

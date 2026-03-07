@@ -39,6 +39,156 @@ export interface Account {
   apiKey: string;
 }
 
+// Source Types
+export interface GitHubBranch {
+  displayName: string;
+}
+
+export interface GitHubRepo {
+  owner: string;
+  repo: string;
+  isPrivate: boolean;
+  defaultBranch: GitHubBranch;
+  branches: GitHubBranch[];
+}
+
+export interface Source {
+  name: string;
+  id: string;
+  githubRepo: GitHubRepo;
+}
+
+export interface ListSourcesResponse {
+  sources: Source[];
+  nextPageToken?: string;
+}
+
+// Session Types
+export type SessionState =
+  | 'STATE_UNSPECIFIED'
+  | 'QUEUED'
+  | 'PLANNING'
+  | 'AWAITING_PLAN_APPROVAL'
+  | 'AWAITING_USER_FEEDBACK'
+  | 'IN_PROGRESS'
+  | 'PAUSED'
+  | 'FAILED'
+  | 'COMPLETED';
+
+export type AutomationMode = 'AUTOMATION_MODE_UNSPECIFIED' | 'AUTO_CREATE_PR';
+
+export interface SourceContext {
+  source: string;
+  githubRepoContext: {
+    startingBranch: string;
+  };
+}
+
+export interface PullRequest {
+  url: string;
+  title: string;
+  description: string;
+  branch?: string;
+}
+
+export interface SessionOutput {
+  pullRequest?: PullRequest;
+}
+
+export interface Session {
+  name: string;
+  id: string;
+  prompt: string;
+  title?: string;
+  state: SessionState;
+  url: string;
+  sourceContext: SourceContext;
+  requirePlanApproval?: boolean;
+  automationMode?: AutomationMode;
+  outputs?: SessionOutput[];
+  createTime: string;
+  updateTime: string;
+}
+
+export interface ListSessionsResponse {
+  sessions: Session[];
+  nextPageToken?: string;
+}
+
+// Activity Types
+export interface PlanStep {
+  stepId: string;
+  index: number;
+  title: string;
+  description?: string;
+}
+
+export interface Plan {
+  id: string;
+  steps: PlanStep[];
+  createTime: string;
+}
+
+export interface GitPatch {
+  baseCommitId?: string;
+  unidiffPatch: string;
+  suggestedCommitMessage?: string;
+}
+
+export interface ChangeSet {
+  source: string;
+  gitPatch?: GitPatch;
+}
+
+export interface Artifact {
+  changeSet?: ChangeSet;
+}
+
+export interface ActivityEvent {
+  planGenerated?: { plan: Plan };
+  planApproved?: { planId: string };
+  userMessaged?: { userMessage: string };
+  agentMessaged?: { agentMessage?: string; message?: string };
+  progressUpdated?: { title: string; details?: string };
+  sessionCompleted?: {};
+  sessionFailed?: { reason: string };
+  codeGenerated?: any;
+  statusChanged?: { status: string };
+  message?: { text: string };
+  originator?: 'user' | 'agent';
+}
+
+export interface Activity {
+  name: string;
+  id: string;
+  actor: 'user' | 'agent' | 'system';
+  description?: string;
+  createTime: string;
+  artifacts?: Artifact[];
+  // Event types
+  planGenerated?: { plan: Plan };
+  planApproved?: { planId: string };
+  userMessaged?: { userMessage: string };
+  agentMessaged?: { agentMessage?: string; message?: string };
+  progressUpdate?: { title: string; details?: string };
+  sessionCompleted?: {};
+  sessionFailed?: { reason: string };
+}
+
+export interface ListActivitiesResponse {
+  activities: Activity[];
+  nextPageToken?: string;
+}
+
+// Request Types
+export interface CreateSessionRequest {
+  prompt: string;
+  title?: string;
+  sourceContext: SourceContext;
+  requirePlanApproval?: boolean;
+  automationMode?: AutomationMode;
+}
+
 // ── Account Management ──
 
 function generateId(): string {
@@ -152,44 +302,215 @@ client.interceptors.request.use(async (config) => {
   return config;
 });
 
+// ── Helper Functions ──
+
+function extractSessionId(sessionId: string): string {
+  return sessionId.startsWith('sessions/') ? sessionId.split('/')[1] : sessionId;
+}
+
+function extractActivityId(activityId: string): string {
+  return activityId.startsWith('activities/') ? activityId.split('/')[1] : activityId;
+}
+
+// ── API Client ──
+
 export const JulesApi = {
-  listSources: async () => {
-    const res = await client.get('/sources');
+  // === Sources API ===
+
+  /**
+   * List all sources with pagination and optional filter
+   */
+  listSources: async (params?: {
+    pageSize?: number;
+    pageToken?: string;
+    filter?: string;
+  }): Promise<ListSourcesResponse> => {
+    const res = await client.get('/sources', { params });
     return res.data;
   },
-  listSessions: async (pageSize = 20) => {
-    const res = await client.get('/sessions', { params: { pageSize } });
+
+  /**
+   * Get a single source by ID
+   */
+  getSource: async (sourceId: string): Promise<Source> => {
+    const id = sourceId.startsWith('sources/') ? sourceId.split('/')[1] : sourceId;
+    const res = await client.get(`/sources/${id}`);
     return res.data;
   },
-  createSession: async (prompt: string, source: string, automationMode = 'AUTO_CREATE_PR') => {
-    const res = await client.post('/sessions', {
-      prompt,
-      sourceContext: {
-        source,
-        githubRepoContext: { startingBranch: 'main' },
-      },
-      automationMode,
-    });
+
+  // === Sessions API ===
+
+  /**
+   * List all sessions with pagination
+   */
+  listSessions: async (params?: {
+    pageSize?: number;
+    pageToken?: string;
+  }): Promise<ListSessionsResponse> => {
+    const res = await client.get('/sessions', { params });
     return res.data;
   },
-  getSession: async (sessionId: string) => {
-    const id = sessionId.startsWith('sessions/') ? sessionId.split('/')[1] : sessionId;
+
+  /**
+   * Get a single session by ID
+   */
+  getSession: async (sessionId: string): Promise<Session> => {
+    const id = extractSessionId(sessionId);
     const res = await client.get(`/sessions/${id}`);
     return res.data;
   },
-  listActivities: async (sessionId: string, pageSize = 100) => {
-    const id = sessionId.startsWith('sessions/') ? sessionId.split('/')[1] : sessionId;
-    const res = await client.get(`/sessions/${id}/activities`, { params: { pageSize } });
+
+  /**
+   * Create a new session
+   */
+  createSession: async (request: CreateSessionRequest): Promise<Session> => {
+    const res = await client.post('/sessions', request);
     return res.data;
   },
-  sendMessage: async (sessionId: string, prompt: string) => {
-    const id = sessionId.startsWith('sessions/') ? sessionId.split('/')[1] : sessionId;
+
+  /**
+   * Delete a session by ID
+   */
+  deleteSession: async (sessionId: string): Promise<void> => {
+    const id = extractSessionId(sessionId);
+    await client.delete(`/sessions/${id}`);
+  },
+
+  /**
+   * Send a message to a session
+   */
+  sendMessage: async (sessionId: string, prompt: string): Promise<void> => {
+    const id = extractSessionId(sessionId);
     const res = await client.post(`/sessions/${id}:sendMessage`, { prompt });
     return res.data;
   },
-  approvePlan: async (sessionId: string) => {
-    const id = sessionId.startsWith('sessions/') ? sessionId.split('/')[1] : sessionId;
+
+  /**
+   * Approve the plan for a session
+   */
+  approvePlan: async (sessionId: string): Promise<void> => {
+    const id = extractSessionId(sessionId);
     const res = await client.post(`/sessions/${id}:approvePlan`);
     return res.data;
   },
+
+  // === Activities API ===
+
+  /**
+   * List activities for a session with pagination
+   */
+  listActivities: async (
+    sessionId: string,
+    params?: {
+      pageSize?: number;
+      pageToken?: string;
+    }
+  ): Promise<ListActivitiesResponse> => {
+    const id = extractSessionId(sessionId);
+    const res = await client.get(`/sessions/${id}/activities`, { params });
+    return res.data;
+  },
+
+  /**
+   * Get a single activity by ID
+   */
+  getActivity: async (sessionId: string, activityId: string): Promise<Activity> => {
+    const sid = extractSessionId(sessionId);
+    const aid = extractActivityId(activityId);
+    const res = await client.get(`/sessions/${sid}/activities/${aid}`);
+    return res.data;
+  },
 };
+
+// ── Convenience Helpers ──
+
+/**
+ * Fetch all sessions with automatic pagination
+ */
+export async function fetchAllSessions(
+  pageSize: number = 50
+): Promise<Session[]> {
+  const sessions: Session[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const response = await JulesApi.listSessions({
+      pageSize,
+      pageToken,
+    });
+    sessions.push(...(response.sessions || []));
+    pageToken = response.nextPageToken;
+  } while (pageToken);
+
+  return sessions;
+}
+
+/**
+ * Fetch all activities for a session with automatic pagination
+ */
+export async function fetchAllActivities(
+  sessionId: string,
+  pageSize: number = 100
+): Promise<Activity[]> {
+  const activities: Activity[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const response = await JulesApi.listActivities(sessionId, {
+      pageSize,
+      pageToken,
+    });
+    activities.push(...(response.activities || []));
+    pageToken = response.nextPageToken;
+  } while (pageToken);
+
+  return activities;
+}
+
+/**
+ * Fetch all sources with automatic pagination
+ */
+export async function fetchAllSources(
+  pageSize: number = 50
+): Promise<Source[]> {
+  const sources: Source[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const response = await JulesApi.listSources({
+      pageSize,
+      pageToken,
+    });
+    sources.push(...(response.sources || []));
+    pageToken = response.nextPageToken;
+  } while (pageToken);
+
+  return sources;
+}
+
+/**
+ * Create session with simplified parameters
+ */
+export async function createSessionSimple(
+  prompt: string,
+  source: string,
+  options?: {
+    title?: string;
+    branch?: string;
+    requirePlanApproval?: boolean;
+    autoCreatePR?: boolean;
+  }
+): Promise<Session> {
+  return JulesApi.createSession({
+    prompt,
+    title: options?.title,
+    sourceContext: {
+      source,
+      githubRepoContext: {
+        startingBranch: options?.branch || 'main',
+      },
+    },
+    requirePlanApproval: options?.requirePlanApproval,
+    automationMode: options?.autoCreatePR ? 'AUTO_CREATE_PR' : undefined,
+  });
+}

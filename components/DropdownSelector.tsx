@@ -20,6 +20,7 @@ interface DropdownSelectorProps {
   iconSize?: number;
   chevronSize?: number;
   showCheckmark?: boolean;
+  disabled?: boolean;
 }
 
 export const DropdownSelector: React.FC<DropdownSelectorProps> = ({
@@ -33,6 +34,7 @@ export const DropdownSelector: React.FC<DropdownSelectorProps> = ({
   iconSize = 16,
   chevronSize = 18,
   showCheckmark = true,
+  disabled = false,
 }) => {
   const [visible, setVisible] = useState(false);
   const theme = useTheme();
@@ -46,12 +48,17 @@ export const DropdownSelector: React.FC<DropdownSelectorProps> = ({
       contentStyle={{ backgroundColor: theme.colors.surfaceVariant }}
       anchor={
         <TouchableOpacity
-          onPress={() => setVisible(true)}
+          onPress={() => !disabled && setVisible(true)}
           style={[
             styles.selector,
-            { backgroundColor: theme.colors.surface, borderColor: Colors.jules.border },
+            { 
+              backgroundColor: disabled ? theme.colors.surfaceDisabled : theme.colors.surface, 
+              borderColor: Colors.jules.border,
+              opacity: disabled ? 0.6 : 1,
+            },
             style,
           ]}
+          disabled={disabled}
         >
           {iconName && (
             <MaterialCommunityIcons

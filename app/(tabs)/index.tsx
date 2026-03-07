@@ -1,24 +1,39 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, Searchbar, Snackbar, Text, TouchableRipple, useTheme } from 'react-native-paper';
+import {
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+  Alert,
+  ActivityIndicator as RNActivityIndicator,
+} from 'react-native';
+import { ActivityIndicator, Searchbar, Snackbar, Text, TouchableRipple, useTheme, IconButton, Menu } from 'react-native-paper';
 import Colors from '../../constants/Colors';
-import { JulesApi, Account, getAccounts, getActiveAccountId, setActiveAccountId } from '../../services/jules';
+import { JulesApi, Account, getAccounts, getActiveAccountId, setActiveAccountId, type Session } from '../../services/jules';
 import { DropdownSelector } from '../../components/DropdownSelector';
 
 function StatusDot({ state }: { state?: string }) {
   const colorMap: Record<string, string> = {
+    QUEUED: Colors.jules.textSecondary,
+    PLANNING: Colors.jules.statusWorking,
+    AWAITING_PLAN_APPROVAL: Colors.jules.statusWaiting,
+    AWAITING_USER_FEEDBACK: Colors.jules.statusWaiting,
+    IN_PROGRESS: Colors.jules.statusWorking,
+    PAUSED: Colors.jules.statusWaiting,
+    COMPLETED: Colors.jules.statusDone,
+    DONE: Colors.jules.statusDone,
+    SUCCEEDED: Colors.jules.statusDone,
+    FAILED: Colors.jules.statusFailed,
+    CANCELLED: Colors.jules.statusCancelled,
+    STATE_UNSPECIFIED: Colors.jules.textSecondary,
     WORKING: Colors.jules.statusWorking,
     RUNNING: Colors.jules.statusWorking,
     WAITING_FOR_USER: Colors.jules.statusWaiting,
     NEEDS_CLARIFICATION: Colors.jules.statusWaiting,
-    DONE: Colors.jules.statusDone,
-    SUCCEEDED: Colors.jules.statusDone,
-    COMPLETED: Colors.jules.statusDone,
-    FAILED: Colors.jules.statusFailed,
-    CANCELLED: Colors.jules.statusCancelled,
   };
   const color = (state && colorMap[state]) || Colors.jules.textSecondary;
   return (
@@ -36,51 +51,187 @@ function StatusDot({ state }: { state?: string }) {
   );
 }
 
+interface SessionItemProps {
+  item: Session;
+  onDelete: (session: Session) => void;
+}
+
+function SessionItem({ item, onDelete }: SessionItemProps) {
+  const theme = useTheme();
+  const { t } = useTranslation();
+  const [menuVisible, setMenuVisible] = useState(false);
+
+  const showDeleteConfirm = () => {
+    setMenuVisible(false);
+    Alert.alert(
+      t('deleteSession'),
+      t('deleteSessionConfirm', { title: item.title || item.id }),
+      [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: t('delete'),
+          style: 'destructive',
+          onPress: () => onDelete(item),
+        },
+      ]
+    );
+  };
+
+  return (
+    <TouchableRipple
+      onPress={() => router.push(`/session/${encodeURIComponent(item.name)}`)}
+      rippleColor="rgba(113, 92, 215, 0.12)"
+      style={[styles.sessionRow, { borderBottomColor: Colors.jules.border }]}
+    >
+      <View style={styles.sessionRowInner}>
+        <StatusDot state={item.state} />
+        <View style={styles.sessionTextContainer}>
+          <Text
+            numberOfLines={1}
+            style={[styles.sessionTitle, { color: theme.colors.onSurface }]}
+          >
+            {item.title || item.id}
+          </Text>
+          {item.prompt ? (
+            <Text
+              numberOfLines={1}
+              style={[styles.sessionSubtitle, { color: theme.colors.onSurfaceVariant }]}
+            >
+              {item.prompt}
+            </Text>
+          ) : null}
+        </View>
+        
+        {/* Menu Button */}
+        <Menu
+          visible={menuVisible}
+          onDismiss={() => setMenuVisible(false)}
+          anchor={
+            <IconButton
+              icon="dots-vertical"
+              size={20}
+              iconColor={Colors.jules.textSecondary}
+              onPress={() => setMenuVisible(true)}
+              style={{ margin: 0 }}
+            />
+          }
+        >
+          <Menu.Item
+            onPress={() => {
+              setMenuVisible(false);
+              router.push(`/session/${encodeURIComponent(item.name)}`);
+            }}
+            title={t('viewDetails')}
+            leadingIcon="eye"
+          />
+          <Menu.Item
+            onPress={showDeleteConfirm}
+            title={t('delete')}
+            leadingIcon="delete"
+            titleStyle={{ color: Colors.jules.statusFailed }}
+          />
+        </Menu>
+
+        <MaterialCommunityIcons
+          name="chevron-right"
+          size={18}
+          color={Colors.jules.textSecondary}
+          style={{ flexShrink: 0 }}
+        />
+      </View>
+    </TouchableRipple>
+  );
+}
+
 export default function SessionsScreen() {
-  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [sources, setSources] = useState<any[]>([]);
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [accounts, setAccountsList] = useState<Account[]>([]);
   const [activeAccountId, setActiveAccId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const theme = useTheme();
-  const { t } = useTranslation();
+  
+  // Pagination
+  const pageTokenRef = useRef<string | undefined>(undefined);
+  const hasMoreRef = useRef(true);
 
-  const loadData = async () => {
-    setLoading(true);
+  const { t } = useTranslation();
+  const theme = useTheme();
+
+  const loadData = async (isRefresh = false) => {
+    if (loading || loadingMore) return;
+    
+    if (isRefresh) {
+      setLoading(true);
+      pageTokenRef.current = undefined;
+      hasMoreRef.current = true;
+    }
+
     setError(null);
     try {
-      // Load accounts
-      const accs = await getAccounts();
-      setAccountsList(accs);
-      const aid = await getActiveAccountId();
-      setActiveAccId(aid);
+      // Load accounts on refresh
+      if (isRefresh) {
+        const accs = await getAccounts();
+        setAccountsList(accs);
+        const aid = await getActiveAccountId();
+        setActiveAccId(aid);
 
-      const [sessionsData, sourcesData] = await Promise.all([
-        JulesApi.listSessions(),
-        JulesApi.listSources()
-      ]);
-      setSessions(sessionsData.sessions || []);
-      setSources(sourcesData.sources || []);
+        const sourcesData = await JulesApi.listSources();
+        setSources(sourcesData.sources || []);
+      }
+
+      // Load sessions with pagination
+      const response = await JulesApi.listSessions({
+        pageSize: 20,
+        pageToken: isRefresh ? undefined : pageTokenRef.current,
+      });
+
+      const newSessions = response.sessions || [];
+      if (isRefresh) {
+        setSessions(newSessions);
+      } else {
+        setSessions(prev => [...prev, ...newSessions]);
+      }
+
+      pageTokenRef.current = response.nextPageToken;
+      hasMoreRef.current = !!response.nextPageToken;
     } catch (e) {
       console.error(e?.message || e);
       setError(t('errorLoading'));
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMoreRef.current) return;
+    setLoadingMore(true);
+    await loadData(false);
+  };
+
+  const handleDeleteSession = async (session: Session) => {
+    try {
+      await JulesApi.deleteSession(session.name);
+      setSessions(prev => prev.filter(s => s.name !== session.name));
+    } catch (e: any) {
+      console.error('Failed to delete session:', e);
+      setError(e?.response?.data?.error?.message || t('deleteFailed'));
     }
   };
 
   const handleSwitchAccount = async (id: string) => {
     await setActiveAccountId(id);
     setActiveAccId(id);
-    loadData();
+    loadData(true);
   };
 
   useFocusEffect(
     useCallback(() => {
-      loadData();
+      loadData(true);
     }, [])
   );
 
@@ -99,39 +250,18 @@ export default function SessionsScreen() {
     return filtered;
   }, [sessions, selectedSource, searchQuery]);
 
-  const renderItem = ({ item }: { item: any }) => (
-    <TouchableRipple
-      onPress={() => router.push(`/session/${encodeURIComponent(item.name)}`)}
-      rippleColor="rgba(113, 92, 215, 0.12)"
-      style={[styles.sessionRow, { borderBottomColor: Colors.jules.border }]}
-    >
-      <View style={styles.sessionRowInner}>
-        <StatusDot state={item.state} />
-        <View style={styles.sessionTextContainer}>
-          <Text
-            numberOfLines={1}
-            style={[styles.sessionTitle, { color: theme.colors.onSurface }]}
-          >
-            {item.title || item.name}
-          </Text>
-          {item.prompt ? (
-            <Text
-              numberOfLines={1}
-              style={[styles.sessionSubtitle, { color: theme.colors.onSurfaceVariant }]}
-            >
-              {item.prompt}
-            </Text>
-          ) : null}
-        </View>
-        <MaterialCommunityIcons
-          name="chevron-right"
-          size={18}
-          color={Colors.jules.textSecondary}
-          style={{ flexShrink: 0 }}
-        />
-      </View>
-    </TouchableRipple>
+  const renderItem = ({ item }: { item: Session }) => (
+    <SessionItem item={item} onDelete={handleDeleteSession} />
   );
+
+  const renderFooter = () => {
+    if (!loadingMore) return null;
+    return (
+      <View style={styles.footerLoader}>
+        <RNActivityIndicator size="small" color={Colors.jules.primary} />
+      </View>
+    );
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -216,16 +346,19 @@ export default function SessionsScreen() {
           refreshControl={
             <RefreshControl
               refreshing={loading}
-              onRefresh={loadData}
+              onRefresh={() => loadData(true)}
               colors={[Colors.jules.primary]}
               tintColor={Colors.jules.primary}
             />
           }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={renderFooter}
           ListHeaderComponent={
             filteredSessions.length > 0 ? (
               <View style={[styles.listHeader, { borderBottomColor: Colors.jules.border }]}>
                 <Text style={[styles.listHeaderText, { color: theme.colors.onSurfaceVariant }]}>
-                  {t('recentSessions')}
+                  {t('recentSessions')} ({filteredSessions.length})
                 </Text>
               </View>
             ) : null
@@ -346,6 +479,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
     lineHeight: 16,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
   empty: {
     paddingTop: 60,
