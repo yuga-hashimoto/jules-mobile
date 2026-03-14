@@ -390,17 +390,20 @@ function ArtifactsCard({ item }: { item: any }) {
             <MaterialCommunityIcons name="file-multiple-outline" size={13} color={Colors.jules.textSecondary} style={{ marginRight: 5 }} />
             <Text style={styles.filesHeaderText}>{allFiles.length} file{allFiles.length !== 1 ? 's' : ''} changed</Text>
           </View>
-          {visible.map((f, i) => (
-            <View key={i} style={styles.fileRow}>
-              <MaterialCommunityIcons
-                name={f.status === 'deleted' ? 'file-remove-outline' : f.status === 'created' ? 'file-plus-outline' : 'file-edit-outline'}
-                size={14}
-                color={f.status === 'deleted' ? Colors.jules.statusFailed : f.status === 'created' ? Colors.jules.statusDone : Colors.jules.tertiary}
-                style={{ marginRight: 8, flexShrink: 0 }}
-              />
-              <Text style={styles.fileName} numberOfLines={1}>{f.path}</Text>
-            </View>
-          ))}
+          {visible.map((f, i) => {
+            const icon = fileIcon(f.status);
+            return (
+              <View key={i} style={styles.fileRow}>
+                <MaterialCommunityIcons
+                  name={icon.name}
+                  size={14}
+                  color={icon.color}
+                  style={{ marginRight: 8, flexShrink: 0 }}
+                />
+                <Text style={styles.fileName} numberOfLines={1}>{f.path}</Text>
+              </View>
+            );
+          })}
           {hasMore && (
             <TouchableOpacity
               onPress={() => {
